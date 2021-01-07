@@ -1,4 +1,4 @@
-import { minOfArray } from "../Utils";
+import { maxOfArray, minOfArray } from "../Utils";
 
 export enum ElevatorDirection {
     UP = "up",
@@ -33,11 +33,33 @@ export class Elevator {
 export class NextFloorResult {
     floor: number;
     isCall: boolean;
+    call?: Call;
+    isCallAndFloorSelection: boolean;
 
-    constructor(floor: number, isCall: boolean = false) {
+    constructor(floor: number, isCall: boolean = false, call?: Call, isCallAndFloorSelection: boolean = false) {
         this.floor = floor;
         this.isCall = isCall;
+        this.call = call;
+        this.isCallAndFloorSelection = isCallAndFloorSelection;
     }
+}
+
+export const findCallToHighestFloor = (calls: Call[]): Call | null => {
+    if (calls.length <= 0) return null;
+
+    return calls.reduce((highest, call) => call.floor > highest.floor ? call : highest);
+}
+
+export const findCallToLowestFloor = (calls: Call[]): Call | null => {
+    if (calls.length <= 0) return null;
+
+    return calls.reduce((lowest, call) => call.floor < lowest.floor ? call : lowest);
+}
+
+export const findCallClosestToFloor = (calls: Call[], floor: number): Call | null => {
+    if (calls.length <= 0) return null;
+
+    return calls.reduce((closest, call) => Math.abs(floor - call.floor) < closest.floor ? call : closest);
 }
 
 /**
@@ -51,40 +73,103 @@ export const determineNextFloor = (elevator: Elevator): NextFloorResult | null =
 
     // TODO: Try to make this function less ugly
     switch (elevator.direction) {
-        case ElevatorDirection.UP:
-            const closestHigherFloorToVisit: number = minOfArray(
+        case ElevatorDirection.UP: {
+            const closestHigherFloorToVisit = minOfArray(
                 elevator.floorsToVisit
                     .filter(floor => floor > elevator.currentFloor)
             );
-            const closestHigherCallToAnswer: number = minOfArray(
+            const closestHigherCallToAnswer = findCallToLowestFloor(
                 elevator.calls
-                    .map(call => call.floor)
-                    .filter(floor => floor > elevator.currentFloor)
+                    .filter(call => call.floor > elevator.currentFloor)
+                    .filter(call => call.direction === elevator.direction)
             );
 
-            if (closestHigherFloorToVisit < closestHigherCallToAnswer) {
-                return new NextFloorResult(closestHigherFloorToVisit, false);
-            } else if (closestHigherCallToAnswer < closestHigherFloorToVisit) {
-                return new NextFloorResult(closestHigherCallToAnswer, true);
+            const closestLowerCallInCurrentDirectionToAnswer = findCallToHighestFloor(
+                elevator.calls
+                    .filter(call => call.floor < elevator.currentFloor)
+                    .filter(call => call.direction === elevator.direction)
+            );
+
+            const closestLowerCallToAnswer = findCallToHighestFloor(
+                elevator.calls
+                    .filter(call => call.floor < elevator.currentFloor)
+            );
+
+            const closestCallToAnswer = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
+
+            if (closestHigherFloorToVisit !== null && closestHigherCallToAnswer !== null) {
+                if (closestHigherFloorToVisit < closestHigherCallToAnswer.floor) {
+                    return new NextFloorResult(closestHigherFloorToVisit, false);
+                } else if (closestHigherCallToAnswer.floor < closestHigherFloorToVisit) {
+                    return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
+                } else {
+                    return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer, true);
+                }
+            } else {
+                if (closestHigherFloorToVisit !== null) return new NextFloorResult(closestHigherFloorToVisit, false);
+                else if (closestHigherCallToAnswer !== null) return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
+                else {
+                    if (closestLowerCallInCurrentDirectionToAnswer !== null) {
+                        return new NextFloorResult(closestLowerCallInCurrentDirectionToAnswer.floor, true, closestLowerCallInCurrentDirectionToAnswer);
+                    } else if (closestLowerCallToAnswer !== null) {
+                        return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
+                    } else if (closestCallToAnswer !== null) {
+                        return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
+                    }
+                }
             }
 
             return null;
-        case ElevatorDirection.DOWN:
-            const closestLowerFloorToVisit: number = minOfArray(elevator.floorsToVisit
-                .filter(floor => floor < elevator.currentFloor));
+        }
+        case ElevatorDirection.DOWN: {
+            const closestLowerFloorToVisit = maxOfArray(
+                elevator.floorsToVisit
+                    .filter(floor => floor < elevator.currentFloor)
+            );
+            const closestLowerCallToAnswer = findCallToHighestFloor(
+                elevator.calls
+                    .filter(call => call.floor < elevator.currentFloor)
+                    .filter(call => call.direction === elevator.direction)
+            );
 
-            const closestLowerCallToAnswer = minOfArray(elevator.calls
-                .map(call => call.floor)
-                .filter(floor => floor < elevator.currentFloor));
+            const closestHigherCallInCurrentDirectionToAnswer = findCallToLowestFloor(
+                elevator.calls
+                    .filter(call => call.floor > elevator.currentFloor)
+                    .filter(call => call.direction === elevator.direction)
+            );
 
-            if (closestLowerFloorToVisit < closestLowerCallToAnswer) {
-                return new NextFloorResult(closestLowerFloorToVisit, false);
-            } else if (closestLowerCallToAnswer < closestLowerFloorToVisit) {
-                return new NextFloorResult(closestLowerCallToAnswer, true);
+            const closestHigherCallToAnswer = findCallToLowestFloor(
+                elevator.calls
+                    .filter(call => call.floor > elevator.currentFloor)
+            );
+
+            const closestCallToAnswer = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
+
+            if (closestLowerFloorToVisit !== null && closestLowerCallToAnswer !== null) {
+                if (closestLowerFloorToVisit > closestLowerCallToAnswer.floor) {
+                    return new NextFloorResult(closestLowerFloorToVisit, false);
+                } else if (closestLowerCallToAnswer.floor > closestLowerFloorToVisit) {
+                    return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
+                } else {
+                    return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer, true);
+                }
+            } else {
+                if (closestLowerFloorToVisit !== null) return new NextFloorResult(closestLowerFloorToVisit, false);
+                else if (closestLowerCallToAnswer !== null) return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
+                else {
+                    if (closestHigherCallInCurrentDirectionToAnswer !== null) {
+                        return new NextFloorResult(closestHigherCallInCurrentDirectionToAnswer.floor, true, closestHigherCallInCurrentDirectionToAnswer);
+                    } else if (closestHigherCallToAnswer !== null) {
+                        return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
+                    } else if (closestCallToAnswer !== null) {
+                        return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
+                    }
+                }
             }
 
             return null;
-        case ElevatorDirection.STATIONARY:
+        }
+        case ElevatorDirection.STATIONARY: {
             const closestReducer = (closest: number, value: number): number => {
                 const distance = Math.abs(elevator.currentFloor - value);
                 return distance < closest ? value : closest;
@@ -96,29 +181,24 @@ export const determineNextFloor = (elevator: Elevator): NextFloorResult | null =
                     : null
             );
 
-            const closestCallToAnswer: number | null = (
-                elevator.calls.length > 0
-                    ? elevator.calls
-                        .map(call => call.floor)
-                        .reduce(closestReducer)
-                    : null
-            );
+            const closestCallToAnswer: Call | null = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
 
             if (closestFloorToVisit !== null && closestCallToAnswer !== null) {
-                if (closestFloorToVisit < closestCallToAnswer) {
+                if (closestFloorToVisit < closestCallToAnswer.floor) {
                     return new NextFloorResult(closestFloorToVisit, false);
-                } else if (closestCallToAnswer < closestFloorToVisit) {
-                    return new NextFloorResult(closestCallToAnswer, true);
+                } else if (closestCallToAnswer.floor < closestFloorToVisit) {
+                    return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
                 } else {
-                    throw new Error(`closestFloorToVisit and closestCallToAnswer should not be equal`);
+                    return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer, true);
                 }
             } else if (closestFloorToVisit !== null) {
                 return new NextFloorResult(closestFloorToVisit, false);
             } else if (closestCallToAnswer !== null) {
-                return new NextFloorResult(closestCallToAnswer, true);
+                return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
             } else {
                 return null;
             }
+        }
         default: console.error(`Unknown elevator direction '${elevator.direction}'`)
     }
 
@@ -127,6 +207,20 @@ export const determineNextFloor = (elevator: Elevator): NextFloorResult | null =
 
 export const hasFloorsToMoveTo = (elevator: Elevator): boolean => {
     return elevator.floorsToVisit.length > 0 || elevator.calls.length > 0;
+}
+
+export const hasFloorsToMoveToInCurrentDirection = (elevator: Elevator): boolean => {
+    const { direction, currentFloor, floorsToVisit, calls } = elevator;
+
+    switch (direction) {
+        case ElevatorDirection.UP:
+            return floorsToVisit.some(floor => floor > currentFloor) || calls.some(call => call.floor > currentFloor);
+        case ElevatorDirection.DOWN:
+            return floorsToVisit.some(floor => floor < currentFloor) || calls.some(call => call.floor > currentFloor);
+        case ElevatorDirection.STATIONARY:
+            return hasFloorsToMoveTo(elevator);
+        default: return false;
+    }
 }
 
 export const getOppositeDirection = (elevator: Elevator): ElevatorDirection => {

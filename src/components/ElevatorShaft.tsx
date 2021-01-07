@@ -1,7 +1,7 @@
 import { ArrowDropDown, ArrowDropUp } from '@material-ui/icons';
 import React, { useEffect, useState } from 'react';
-import { arrayOfLength } from '../Utils';
-import { Elevator, ElevatorDirection, determineNextFloor, STATIONARY_TIMEOUT, getOppositeDirection, NextFloorResult, hasFloorsToMoveTo } from './Elevator';
+import { addIfNotIncluded, arrayOfLength } from '../Utils';
+import { Elevator, ElevatorDirection, determineNextFloor, STATIONARY_TIMEOUT, getOppositeDirection, hasFloorsToMoveTo, hasFloorsToMoveToInCurrentDirection } from './Elevator';
 import './Elevator.scss';
 
 interface Props {
@@ -20,6 +20,8 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
     const attemptToMoveElevator = (elevator: Elevator) => {
         const nextFloorResult = determineNextFloor(elevator);
+
+        console.log(nextFloorResult);
 
         if (nextFloorResult === null) {
             if (elevator.direction !== ElevatorDirection.STATIONARY) {
@@ -47,6 +49,20 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
         const { floor: nextFloor } = nextFloorResult;
 
+        const newElevator: Elevator = {
+            ...elevator,
+            currentFloor: nextFloor,
+        };
+
+        if (nextFloorResult.isCallAndFloorSelection) {
+            newElevator.calls = newElevator.calls.filter(call => call !== nextFloorResult.call);
+            newElevator.floorsToVisit = newElevator.floorsToVisit.filter(floor => floor !== nextFloor);
+        } else if (nextFloorResult.isCall) {
+            newElevator.calls = newElevator.calls.filter(call => call !== nextFloorResult.call);
+        } else {
+            newElevator.floorsToVisit = newElevator.floorsToVisit.filter(floor => floor !== nextFloor)
+        }
+
         const directionFromCurrentFloor: ElevatorDirection = (
             nextFloor > elevator.currentFloor
                 ? ElevatorDirection.UP
@@ -55,17 +71,10 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
                     : ElevatorDirection.STATIONARY
         );
 
-        // TODO: Figure out whether always setting direction here is correct
-        const newElevator = {
-            ...elevator,
-            direction: directionFromCurrentFloor,
-            currentFloor: nextFloor,
-        };
+        const newDirection = nextFloorResult.isCall ? nextFloorResult.call!.direction : directionFromCurrentFloor;
 
-        if (nextFloorResult.isCall) {
-            newElevator.calls = newElevator.calls.filter(call => call.floor !== nextFloor);
-        } else {
-            newElevator.floorsToVisit = newElevator.floorsToVisit.filter(floor => floor !== nextFloor)
+        if (newElevator.direction === ElevatorDirection.STATIONARY || !hasFloorsToMoveToInCurrentDirection(newElevator)) {
+            newElevator.direction = newDirection;
         }
 
         setElevator(newElevator);
@@ -76,7 +85,7 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
         setElevator({
             ...elevator,
-            floorsToVisit: [...elevator.floorsToVisit, floorNr]
+            floorsToVisit: addIfNotIncluded(elevator.floorsToVisit, floorNr)
         });
     };
 
@@ -84,7 +93,7 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
         const callElevator = () => {
             setElevator({
                 ...elevator,
-                calls: [...elevator.calls, {floor: floorNr, direction}]
+                calls: addIfNotIncluded(elevator.calls, {floor: floorNr, direction}, (call) => call.floor === floorNr && call.direction === direction)
             });
         };
 
@@ -106,12 +115,14 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
         <div className="elevator">
             {arrayOfLength(amountOfFloors).map((_, floorNr) => {
                 const elevatorPresent = elevator.currentFloor === floorNr;
+                const isFirstFloor = floorNr === 0;
+                const isLastFloor = floorNr === amountOfFloors - 1;
 
                 return (
                     <div key={`floor-${floorNr}`} className="floor-container">
                         <div className="call-buttons">
-                            <ArrowDropUp className="btn" onClick={e => handleCallButtonClick(e, floorNr, ElevatorDirection.UP)} />
-                            <ArrowDropDown className="btn" onClick={e => handleCallButtonClick(e, floorNr, ElevatorDirection.DOWN)} />
+                            {!isLastFloor && <ArrowDropUp className="btn" onClick={e => handleCallButtonClick(e, floorNr, ElevatorDirection.UP)} />}
+                            {!isFirstFloor && <ArrowDropDown className="btn" onClick={e => handleCallButtonClick(e, floorNr, ElevatorDirection.DOWN)} />}
                         </div>
                         {elevatorPresent
                             ? <ElevatorAtFloor key={floorNr} elevator={elevator} handleFloorButtonClick={handleFloorButtonClick} />
