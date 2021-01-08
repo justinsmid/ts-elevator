@@ -17,7 +17,7 @@ export const STATIONARY_TIMEOUT = 3000;
 export class Elevator {
     amountOfFloors: number;
     currentFloor: number;
-    floorsToVisit: number[]; // Floors the elevator is currently moving to
+    floorsToVisit: number[];
     calls: Call[];
     direction: ElevatorDirection;
 
@@ -63,6 +63,81 @@ export const findCallClosestToFloor = (calls: Call[], floor: number): Call | nul
 }
 
 /**
+ * Function used internally by determineNextFloor that generalizes it when elevator is going either up or down.
+ * @param elevator Elevator
+ * @param floorComparator Function used to check whether a floor is in the current direction
+ * @param callComparator Function used to check whether a floor is in the opposite direction
+ */
+const _determineNextFloor = (
+    elevator: Elevator,
+    floorComparator: ((floor: number) => boolean),
+    callComparator: ((call: Call) => boolean),
+    findClosestFloorInCurrentDirection: ((array: number[]) => number | null),
+    findClosestFloorInOtherDirection: ((array: number[]) => number | null),
+    findClosestCallInCurrentDirection: ((calls: Call[]) => Call | null),
+    findClosestCallInOtherDirection: ((calls: Call[]) => Call | null)
+): NextFloorResult | null => {
+    const closestFloorInCurrentDirection = findClosestFloorInCurrentDirection(
+        elevator.floorsToVisit
+            .filter(floorComparator)
+    );
+    const closestCallInCurrentDirectionWithCurrentDirection = findClosestCallInCurrentDirection(
+        elevator.calls
+            .filter(callComparator)
+            .filter(call => call.direction === elevator.direction)
+    );
+
+    const closestCallInOtherDirectionWithCurrentDirection = findClosestCallInOtherDirection(
+        elevator.calls
+            .filter(call => !callComparator(call))
+            .filter(call => call.direction === elevator.direction)
+    );
+
+    const closestCallInOtherDirection = findClosestCallInOtherDirection(
+        elevator.calls
+            .filter(call => !callComparator(call))
+    );
+
+    const closestFloorInOtherDirection = findClosestFloorInOtherDirection(
+        elevator.floorsToVisit
+            .filter(floor => !floorComparator(floor))
+    );
+
+    const closestCall = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
+
+    // preferably, the elevator would move to a floor in its current direction
+    if (closestFloorInCurrentDirection && closestCallInCurrentDirectionWithCurrentDirection) {
+        // If there is both a call and a floorSelection in the current direction, return whichever is closer
+        if (closestFloorInCurrentDirection < closestCallInCurrentDirectionWithCurrentDirection.floor) {
+            return new NextFloorResult(closestFloorInCurrentDirection);
+        } else {
+            // If the call is closer or the same distance, return it and set the appropriate flags
+            const callAndFloorAreSameDistance = closestCallInCurrentDirectionWithCurrentDirection.floor === closestFloorInCurrentDirection;
+            return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection, callAndFloorAreSameDistance);
+        }
+    } else {
+        // Else if there is either no call or no floorSelection in the current direction, return whichever there is, prioritizing calls to current direction
+        if (closestCallInCurrentDirectionWithCurrentDirection) return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection);
+        else if (closestFloorInCurrentDirection) return new NextFloorResult(closestFloorInCurrentDirection);
+        else {
+            // Else if there is neither a call nor a floorSelection in the current direction, return the closest call / floorSelection in the other direction, again prioritizing calls
+            if (closestCallInOtherDirectionWithCurrentDirection) {
+                return new NextFloorResult(closestCallInOtherDirectionWithCurrentDirection.floor, true, closestCallInOtherDirectionWithCurrentDirection);
+            } else if (closestCallInOtherDirection) {
+                return new NextFloorResult(closestCallInOtherDirection.floor, true, closestCallInOtherDirection);
+            } else if (closestFloorInOtherDirection) {
+                return new NextFloorResult(closestFloorInOtherDirection);
+                // Else if there are no calls or floorSelections in either direction, return the closest call regardless of direction
+            } else if (closestCall) {
+                return new NextFloorResult(closestCall.floor, true, closestCall);
+            }
+        }
+    }
+
+    return null;
+};
+
+/**
  * Get the next floor for the elevator to move to, or null if the elevator has no more floors it needs to visit.
  * Assuming there are floors to be visited, this will return the closest floor in the current direction of the elevalor.
  * If the elevator is currently stationary, it will return the closest floor regardless of direction.
@@ -71,134 +146,56 @@ export const findCallClosestToFloor = (calls: Call[], floor: number): Call | nul
 export const determineNextFloor = (elevator: Elevator): NextFloorResult | null => {
     if (!hasFloorsToMoveTo(elevator)) return null;
 
-    // TODO: Try to make this function less ugly
     switch (elevator.direction) {
-        case ElevatorDirection.UP: {
-            const closestHigherFloorToVisit = minOfArray(
-                elevator.floorsToVisit
-                    .filter(floor => floor > elevator.currentFloor)
+        case ElevatorDirection.UP:
+            return _determineNextFloor(
+                elevator,
+                floor => floor > elevator.currentFloor,
+                call => call.floor > elevator.currentFloor,
+                minOfArray,
+                maxOfArray,
+                findCallToLowestFloor,
+                findCallToHighestFloor
             );
-            const closestHigherCallToAnswer = findCallToLowestFloor(
-                elevator.calls
-                    .filter(call => call.floor > elevator.currentFloor)
-                    .filter(call => call.direction === elevator.direction)
+        case ElevatorDirection.DOWN:
+            return _determineNextFloor(
+                elevator,
+                floor => floor < elevator.currentFloor,
+                call => call.floor < elevator.currentFloor,
+                maxOfArray,
+                minOfArray,
+                findCallToHighestFloor,
+                findCallToLowestFloor
             );
-
-            const closestLowerCallInCurrentDirectionToAnswer = findCallToHighestFloor(
-                elevator.calls
-                    .filter(call => call.floor < elevator.currentFloor)
-                    .filter(call => call.direction === elevator.direction)
-            );
-
-            const closestLowerCallToAnswer = findCallToHighestFloor(
-                elevator.calls
-                    .filter(call => call.floor < elevator.currentFloor)
-            );
-
-            const closestCallToAnswer = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
-
-            if (closestHigherFloorToVisit !== null && closestHigherCallToAnswer !== null) {
-                if (closestHigherFloorToVisit < closestHigherCallToAnswer.floor) {
-                    return new NextFloorResult(closestHigherFloorToVisit, false);
-                } else if (closestHigherCallToAnswer.floor < closestHigherFloorToVisit) {
-                    return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
-                } else {
-                    return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer, true);
-                }
-            } else {
-                if (closestHigherFloorToVisit !== null) return new NextFloorResult(closestHigherFloorToVisit, false);
-                else if (closestHigherCallToAnswer !== null) return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
-                else {
-                    if (closestLowerCallInCurrentDirectionToAnswer !== null) {
-                        return new NextFloorResult(closestLowerCallInCurrentDirectionToAnswer.floor, true, closestLowerCallInCurrentDirectionToAnswer);
-                    } else if (closestLowerCallToAnswer !== null) {
-                        return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
-                    } else if (closestCallToAnswer !== null) {
-                        return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
-                    }
-                }
-            }
-
-            return null;
-        }
-        case ElevatorDirection.DOWN: {
-            const closestLowerFloorToVisit = maxOfArray(
-                elevator.floorsToVisit
-                    .filter(floor => floor < elevator.currentFloor)
-            );
-            const closestLowerCallToAnswer = findCallToHighestFloor(
-                elevator.calls
-                    .filter(call => call.floor < elevator.currentFloor)
-                    .filter(call => call.direction === elevator.direction)
-            );
-
-            const closestHigherCallInCurrentDirectionToAnswer = findCallToLowestFloor(
-                elevator.calls
-                    .filter(call => call.floor > elevator.currentFloor)
-                    .filter(call => call.direction === elevator.direction)
-            );
-
-            const closestHigherCallToAnswer = findCallToLowestFloor(
-                elevator.calls
-                    .filter(call => call.floor > elevator.currentFloor)
-            );
-
-            const closestCallToAnswer = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
-
-            if (closestLowerFloorToVisit !== null && closestLowerCallToAnswer !== null) {
-                if (closestLowerFloorToVisit > closestLowerCallToAnswer.floor) {
-                    return new NextFloorResult(closestLowerFloorToVisit, false);
-                } else if (closestLowerCallToAnswer.floor > closestLowerFloorToVisit) {
-                    return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
-                } else {
-                    return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer, true);
-                }
-            } else {
-                if (closestLowerFloorToVisit !== null) return new NextFloorResult(closestLowerFloorToVisit, false);
-                else if (closestLowerCallToAnswer !== null) return new NextFloorResult(closestLowerCallToAnswer.floor, true, closestLowerCallToAnswer);
-                else {
-                    if (closestHigherCallInCurrentDirectionToAnswer !== null) {
-                        return new NextFloorResult(closestHigherCallInCurrentDirectionToAnswer.floor, true, closestHigherCallInCurrentDirectionToAnswer);
-                    } else if (closestHigherCallToAnswer !== null) {
-                        return new NextFloorResult(closestHigherCallToAnswer.floor, true, closestHigherCallToAnswer);
-                    } else if (closestCallToAnswer !== null) {
-                        return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
-                    }
-                }
-            }
-
-            return null;
-        }
-        case ElevatorDirection.STATIONARY: {
+        case ElevatorDirection.STATIONARY:
             const closestReducer = (closest: number, value: number): number => {
                 const distance = Math.abs(elevator.currentFloor - value);
                 return distance < closest ? value : closest;
             };
 
-            const closestFloorToVisit: number | null = (
+            const closestFloorToVisit = (
                 elevator.floorsToVisit.length > 0
                     ? elevator.floorsToVisit.reduce(closestReducer)
                     : null
             );
 
-            const closestCallToAnswer: Call | null = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
+            const closestCallToAnswer = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
 
-            if (closestFloorToVisit !== null && closestCallToAnswer !== null) {
+            if (closestFloorToVisit && closestCallToAnswer) {
                 if (closestFloorToVisit < closestCallToAnswer.floor) {
-                    return new NextFloorResult(closestFloorToVisit, false);
+                    return new NextFloorResult(closestFloorToVisit);
                 } else if (closestCallToAnswer.floor < closestFloorToVisit) {
                     return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
                 } else {
                     return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer, true);
                 }
-            } else if (closestFloorToVisit !== null) {
-                return new NextFloorResult(closestFloorToVisit, false);
-            } else if (closestCallToAnswer !== null) {
+            } else if (closestCallToAnswer) {
                 return new NextFloorResult(closestCallToAnswer.floor, true, closestCallToAnswer);
+            } else if (closestFloorToVisit) {
+                return new NextFloorResult(closestFloorToVisit);
             } else {
                 return null;
             }
-        }
         default: console.error(`Unknown elevator direction '${elevator.direction}'`)
     }
 

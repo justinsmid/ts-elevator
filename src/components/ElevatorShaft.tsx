@@ -11,8 +11,6 @@ interface Props {
 export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
     const [elevator, setElevator] = useState<Elevator>(() => new Elevator(amountOfFloors));
 
-    console.log(elevator);
-
     useEffect(() => {
         const moveElevatorInterval = window.setInterval(() => attemptToMoveElevator(elevator), 3000);
         return () => window.clearInterval(moveElevatorInterval);
@@ -20,8 +18,6 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
     const attemptToMoveElevator = (elevator: Elevator) => {
         const nextFloorResult = determineNextFloor(elevator);
-
-        console.log(nextFloorResult);
 
         if (nextFloorResult === null) {
             if (elevator.direction !== ElevatorDirection.STATIONARY) {
@@ -49,11 +45,13 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
         const { floor: nextFloor } = nextFloorResult;
 
+        // Move elevator to nextFloor
         const newElevator: Elevator = {
             ...elevator,
             currentFloor: nextFloor,
         };
 
+        // Remove the visited floor/call from elevator's lists so that it does not visit it again until needed
         if (nextFloorResult.isCallAndFloorSelection) {
             newElevator.calls = newElevator.calls.filter(call => call !== nextFloorResult.call);
             newElevator.floorsToVisit = newElevator.floorsToVisit.filter(floor => floor !== nextFloor);
@@ -73,6 +71,7 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
         const newDirection = nextFloorResult.isCall ? nextFloorResult.call!.direction : directionFromCurrentFloor;
 
+        // Change elevator's direction if the elevator was stationary prior to moving, or if the elevator has no more floors to move to after moving.
         if (newElevator.direction === ElevatorDirection.STATIONARY || !hasFloorsToMoveToInCurrentDirection(newElevator)) {
             newElevator.direction = newDirection;
         }
@@ -97,6 +96,7 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
             });
         };
 
+        // If the elevator gets called to the floor it is currently on, only change it's direction. Otherwise, call the elevator to the floor
         if (floorNr === elevator.currentFloor) {
             if (hasFloorsToMoveTo(elevator)) {
                 callElevator();
