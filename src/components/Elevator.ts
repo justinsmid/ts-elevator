@@ -81,10 +81,16 @@ const _determineNextFloor = (
         elevator.floorsToVisit
             .filter(floorComparator)
     );
+
     const closestCallInCurrentDirectionWithCurrentDirection = findClosestCallInCurrentDirection(
         elevator.calls
             .filter(callComparator)
             .filter(call => call.direction === elevator.direction)
+    );
+
+    const closestCallInCurrentDirection = findClosestCallInCurrentDirection(
+        elevator.calls
+            .filter(callComparator)
     );
 
     const closestCallInOtherDirectionWithCurrentDirection = findClosestCallInOtherDirection(
@@ -105,30 +111,50 @@ const _determineNextFloor = (
 
     const closestCall = findCallClosestToFloor(elevator.calls, elevator.currentFloor);
 
-    // preferably, the elevator would move to a floor in its current direction
-    if (closestFloorInCurrentDirection && closestCallInCurrentDirectionWithCurrentDirection) {
-        // If there is both a call and a floorSelection in the current direction, return whichever is closer
-        if (closestFloorInCurrentDirection < closestCallInCurrentDirectionWithCurrentDirection.floor) {
-            return new NextFloorResult(closestFloorInCurrentDirection);
-        } else {
-            // If the call is closer or the same distance, return it and set the appropriate flags
-            const callAndFloorAreSameDistance = closestCallInCurrentDirectionWithCurrentDirection.floor === closestFloorInCurrentDirection;
-            return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection, callAndFloorAreSameDistance);
+    const closerFloorOperator = elevator.direction === ElevatorDirection.UP ? "<" : ">";
+
+    if (closestFloorInCurrentDirection !== null && (closestCallInCurrentDirectionWithCurrentDirection !== null || closestCallInCurrentDirection !== null)) {
+        if (closestCallInCurrentDirectionWithCurrentDirection !== null) {
+            if (eval(`${closestFloorInCurrentDirection} ${closerFloorOperator} ${closestCallInCurrentDirectionWithCurrentDirection.floor}`)) {
+                return new NextFloorResult(closestFloorInCurrentDirection);
+            } else {
+                // If the call is closer or the same distance, return it with the appropriate flags
+                const callAndFloorAreSameDistance = closestCallInCurrentDirectionWithCurrentDirection.floor === closestFloorInCurrentDirection;
+                return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection, callAndFloorAreSameDistance);
+            }
+        } else if (closestCallInCurrentDirection !== null) {
+            if (eval(`${closestFloorInCurrentDirection} ${closerFloorOperator} ${closestCallInCurrentDirection.floor}`)) {
+                return new NextFloorResult(closestFloorInCurrentDirection);
+            } else {
+                // If the call is closer or the same distance, return it with the appropriate flags
+                const callAndFloorAreSameDistance = closestCallInCurrentDirection.floor === closestFloorInCurrentDirection;
+                return new NextFloorResult(closestCallInCurrentDirection.floor, true, closestCallInCurrentDirection, callAndFloorAreSameDistance);
+            }
         }
     } else {
         // Else if there is either no call or no floorSelection in the current direction, return whichever there is, prioritizing calls to current direction
-        if (closestCallInCurrentDirectionWithCurrentDirection) return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection);
-        else if (closestFloorInCurrentDirection) return new NextFloorResult(closestFloorInCurrentDirection);
+        if (closestCallInCurrentDirectionWithCurrentDirection !== null) return new NextFloorResult(closestCallInCurrentDirectionWithCurrentDirection.floor, true, closestCallInCurrentDirectionWithCurrentDirection);
+        else if (closestCallInCurrentDirection !== null) return new NextFloorResult(closestCallInCurrentDirection.floor, true, closestCallInCurrentDirection);
+        else if (closestFloorInCurrentDirection !== null) return new NextFloorResult(closestFloorInCurrentDirection);
         else {
-            // Else if there is neither a call nor a floorSelection in the current direction, return the closest call / floorSelection in the other direction, again prioritizing calls
-            if (closestCallInOtherDirectionWithCurrentDirection) {
-                return new NextFloorResult(closestCallInOtherDirectionWithCurrentDirection.floor, true, closestCallInOtherDirectionWithCurrentDirection);
-            } else if (closestCallInOtherDirection) {
-                return new NextFloorResult(closestCallInOtherDirection.floor, true, closestCallInOtherDirection);
-            } else if (closestFloorInOtherDirection) {
+            if (closestCallInOtherDirectionWithCurrentDirection !== null && closestFloorInOtherDirection !== null) {
+                if (eval(`${closestCallInOtherDirectionWithCurrentDirection.floor} ${closerFloorOperator} ${closestFloorInCurrentDirection}`)) {
+                    return new NextFloorResult(closestCallInOtherDirectionWithCurrentDirection.floor, true, closestCallInOtherDirectionWithCurrentDirection);
+                } else {
+                    const callAndFloorAreSameDistance = closestCallInOtherDirectionWithCurrentDirection.floor === closestFloorInOtherDirection;
+                    return new NextFloorResult(closestCallInOtherDirectionWithCurrentDirection.floor, true, closestCallInOtherDirectionWithCurrentDirection, callAndFloorAreSameDistance);
+                }
+            } else if (closestCallInOtherDirection !== null && closestFloorInOtherDirection !== null) {
+                if (eval(`${closestCallInOtherDirection.floor} ${closerFloorOperator} ${closestFloorInCurrentDirection}`)) {
+                    return new NextFloorResult(closestCallInOtherDirection.floor, true, closestCallInOtherDirection);
+                } else {
+                    const callAndFloorAreSameDistance = closestCallInOtherDirection.floor === closestFloorInOtherDirection;
+                    return new NextFloorResult(closestCallInOtherDirection.floor, true, closestCallInOtherDirection, callAndFloorAreSameDistance);
+                }
+            } else if (closestFloorInOtherDirection !== null) {
                 return new NextFloorResult(closestFloorInOtherDirection);
                 // Else if there are no calls or floorSelections in either direction, return the closest call regardless of direction
-            } else if (closestCall) {
+            } else if (closestCall !== null) {
                 return new NextFloorResult(closestCall.floor, true, closestCall);
             }
         }

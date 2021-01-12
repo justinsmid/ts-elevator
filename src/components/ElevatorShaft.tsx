@@ -1,47 +1,28 @@
 import { ArrowDropDown, ArrowDropUp } from '@material-ui/icons';
 import React, { useEffect, useState } from 'react';
 import { addIfNotIncluded, arrayOfLength } from '../Utils';
-import { Elevator, ElevatorDirection, determineNextFloor, STATIONARY_TIMEOUT, getOppositeDirection, hasFloorsToMoveTo, hasFloorsToMoveToInCurrentDirection } from './Elevator';
+import { Elevator, ElevatorDirection, determineNextFloor, hasFloorsToMoveTo, hasFloorsToMoveToInCurrentDirection } from './Elevator';
 import './Elevator.scss';
 
 interface Props {
     amountOfFloors: number
 };
 
+// Amount of milliseconds it takes the elevator to move
+const ELEVATOR_MOVEMENT_TIMEOUT = 3000;
+
 export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
     const [elevator, setElevator] = useState<Elevator>(() => new Elevator(amountOfFloors));
 
     useEffect(() => {
-        const moveElevatorInterval = window.setInterval(() => attemptToMoveElevator(elevator), 3000);
+        const moveElevatorInterval = window.setInterval(() => attemptToMoveElevator(elevator), ELEVATOR_MOVEMENT_TIMEOUT);
         return () => window.clearInterval(moveElevatorInterval);
     }, [elevator]);
 
     const attemptToMoveElevator = (elevator: Elevator) => {
         const nextFloorResult = determineNextFloor(elevator);
 
-        if (nextFloorResult === null) {
-            if (elevator.direction !== ElevatorDirection.STATIONARY) {
-                if (hasFloorsToMoveTo(elevator)) {
-                    // When no floor to visit was found, but there are still floors to be visited, change the elevator's direction and try to move again
-                    const newElevator: Elevator = {
-                        ...elevator,
-                        direction: getOppositeDirection(elevator)
-                    };
-
-                    setElevator(newElevator);
-                    attemptToMoveElevator(newElevator);
-                } else {
-                    // Else if there really are no more floors to visit, make the elevator become stationary after a given timeout
-                    setTimeout(() => {
-                        setElevator({
-                            ...elevator,
-                            direction: ElevatorDirection.STATIONARY
-                        });
-                    }, STATIONARY_TIMEOUT);
-                }
-            }
-            return;
-        }
+        if (nextFloorResult === null) return;
 
         const { floor: nextFloor } = nextFloorResult;
 
@@ -71,8 +52,8 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
 
         const newDirection = nextFloorResult.isCall ? nextFloorResult.call!.direction : directionFromCurrentFloor;
 
-        // Change elevator's direction if the elevator was stationary prior to moving, or if the elevator has no more floors to move to after moving.
-        if (newElevator.direction === ElevatorDirection.STATIONARY || !hasFloorsToMoveToInCurrentDirection(newElevator)) {
+        // Change elevator's direction if the elevator was stationary prior to moving, uif the move was due to a call, or if the elevator has no more floors to move to after moving.
+        if (newElevator.direction === ElevatorDirection.STATIONARY || nextFloorResult.isCall || !hasFloorsToMoveToInCurrentDirection(newElevator)) {
             newElevator.direction = newDirection;
         }
 
@@ -92,7 +73,7 @@ export const ElevatorShaft: React.FC<Props> = ({ amountOfFloors }) => {
         const callElevator = () => {
             setElevator({
                 ...elevator,
-                calls: addIfNotIncluded(elevator.calls, {floor: floorNr, direction}, (call) => call.floor === floorNr && call.direction === direction)
+                calls: addIfNotIncluded(elevator.calls, { floor: floorNr, direction }, (call) => call.floor === floorNr && call.direction === direction)
             });
         };
 
